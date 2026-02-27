@@ -314,7 +314,7 @@ html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--tex
   transition:all .2s; z-index:5;
 }
 #athlete-card .close-btn:hover { background:var(--card-border); color:var(--text); }
-#athlete-card .card-body { padding:1.4rem 1.6rem 1.2rem; }
+#athlete-card .card-body { padding:1.4rem 1.6rem 1.2rem; max-height:70vh; overflow-y:auto; }
 
 #athlete-card .athlete-entry {
   padding:.8rem 0;
@@ -322,16 +322,39 @@ html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--tex
 }
 #athlete-card .athlete-entry:last-child { border-bottom:none; }
 
-#athlete-card .athlete-top {
+#athlete-card .athlete-header {
   display:flex; align-items:flex-start; gap:.7rem;
+  margin-bottom:.45rem;
+}
+#athlete-card .athlete-medals-col {
+  display:flex; flex-direction:column; align-items:center;
+  gap:.15rem; flex-shrink:0;
 }
 #athlete-card .medal-icon {
-  font-size:3rem; flex-shrink:0; line-height:1;
+  font-size:1.6rem; line-height:1;
+}
+#athlete-card .athlete-medals-col .medal-icon:first-child {
+  font-size:2.4rem;
 }
 #athlete-card .athlete-name {
   font-family:var(--serif);
   font-size:var(--fs-display); font-style:italic;
   color:var(--text); line-height:1.15;
+}
+
+#athlete-card .medal-list {
+  list-style:none; margin:.3rem 0 0; padding:0;
+}
+#athlete-card .medal-list li {
+  font-size:.72rem; color:var(--text-light);
+  padding:.18rem 0; display:flex; align-items:center; gap:.4rem;
+}
+#athlete-card .medal-list li .medal-dot {
+  font-size:.95rem; line-height:1; flex-shrink:0;
+}
+
+#athlete-card .athlete-top {
+  display:flex; align-items:flex-start; gap:.7rem;
 }
 #athlete-card .athlete-event {
   font-size:.72rem; color:var(--text-light);
@@ -1168,10 +1191,12 @@ map.on('style.load', () => {
 /* ── Build Map Layers ── */
 map.on('load', () => {
   const arcFeatures = [];
-  const pointFeatures = [];
+  const pointMap = new Map(); // key: "lat,lng" → grouped point data
+  const MEDAL_RANK = { gold: 3, silver: 2, bronze: 1 };
 
   countries.forEach(c => {
     c.athletes.forEach(a => {
+      // Arcs: still one per medal entry
       const steps = 80;
       const coords = [];
       for (let i = 0; i <= steps; i++) {
@@ -1181,26 +1206,52 @@ map.on('load', () => {
           a.lat + (CORTINA.lat - a.lat) * t,
         ]);
       }
-
       const medalColor = MEDAL[a.medal] || OC.blue;
-
       arcFeatures.push({
         type: 'Feature',
         properties: { color: medalColor, ringColor: c.ring },
         geometry: { type: 'LineString', coordinates: coords },
       });
 
-      pointFeatures.push({
-        type: 'Feature',
-        properties: {
+      // Points: group by hometown coordinates
+      const key = `${a.lat},${a.lng}`;
+      if (!pointMap.has(key)) {
+        pointMap.set(key, {
+          lat: a.lat, lng: a.lng,
           name: a.name, event: a.event, medal: a.medal,
           hometown: a.hometown, country: c.name, flag: c.flag,
-          color: medalColor, ringColor: c.ring,
-          slug: a.slug || '',
+          ringColor: c.ring, slug: a.slug || '',
           hometownCountry: a.hometownCountry || c.name,
-        },
-        geometry: { type: 'Point', coordinates: [a.lng, a.lat] },
-      });
+          highestMedalRank: MEDAL_RANK[a.medal] || 0,
+          highestMedal: a.medal,
+          medalCount: 1,
+        });
+      } else {
+        const p = pointMap.get(key);
+        p.medalCount++;
+        const rank = MEDAL_RANK[a.medal] || 0;
+        if (rank > p.highestMedalRank) {
+          p.highestMedalRank = rank;
+          p.highestMedal = a.medal;
+        }
+      }
+    });
+  });
+
+  // Convert grouped points to GeoJSON features
+  const pointFeatures = [];
+  pointMap.forEach(p => {
+    const color = MEDAL[p.highestMedal] || OC.blue;
+    pointFeatures.push({
+      type: 'Feature',
+      properties: {
+        name: p.name, event: p.event, medal: p.highestMedal,
+        hometown: p.hometown, country: p.country, flag: p.flag,
+        color, ringColor: p.ringColor,
+        slug: p.slug, hometownCountry: p.hometownCountry,
+        medalCount: p.medalCount,
+      },
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
     });
   });
 
@@ -1210,7 +1261,8 @@ map.on('load', () => {
     properties: {
       name: 'Milano-Cortina 2026', event: 'Host City', medal: 'host',
       hometown: "Cortina d'Ampezzo", country: 'Italy', flag: '🇮🇹',
-      color: OC.red, ringColor: OC.red,
+      color: '#1a1a2e', ringColor: '#DAA520',
+      medalCount: 0,
     },
     geometry: { type: 'Point', coordinates: [CORTINA.lng, CORTINA.lat] },
   });
@@ -1222,31 +1274,84 @@ map.on('load', () => {
   map.addLayer({ id: 'arc-lines', type: 'line', source: 'arcs', paint: { 'line-color': ['get','ringColor'], 'line-width': 1.5, 'line-opacity': 0 }, layout: { 'line-cap': 'round' } });
   map.addLayer({ id: 'arc-glow', type: 'line', source: 'arcs', paint: { 'line-color': ['get','ringColor'], 'line-width': 5, 'line-opacity': 0, 'line-blur': 5 } });
 
-  // Point layers
-  map.addLayer({ id: 'point-ring', type: 'circle', source: 'points', paint: {
-    'circle-radius': ['case', ['==',['get','medal'],'host'], 14, ['==',['get','medal'],'gold'], 11, 9],
-    'circle-color': ['get','color'], 'circle-opacity': 0, 'circle-blur': 1,
-  }});
-  map.addLayer({ id: 'point-core', type: 'circle', source: 'points', paint: {
-    'circle-radius': ['case', ['==',['get','medal'],'host'], 8, ['==',['get','medal'],'gold'], 6, ['==',['get','medal'],'silver'], 5, 4.5],
-    'circle-color': ['case', ['==',['get','medal'],'host'], '#ffffff', ['get','color']],
-    'circle-opacity': 0, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',
-  }});
+  // ── Host city star icon ──
+  const starSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+    <polygon points="32,4 39.5,24.5 61,24.5 43.5,38 50,59 32,46 14,59 20.5,38 3,24.5 24.5,24.5"
+      fill="#E03030" stroke="#ffffff" stroke-width="3"/>
+  </svg>`;
+  const starImg = new Image(64, 64);
+  starImg.onload = () => {
+    map.addImage('host-star', starImg);
+    addPointLayers();
+  };
+  starImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(starSvg);
 
-  // Cursor
-  map.on('mouseenter', 'point-core', () => { map.getCanvas().style.cursor = 'pointer'; });
-  map.on('mouseleave', 'point-core', () => { map.getCanvas().style.cursor = ''; });
+  function addPointLayers() {
+    // Medal point layers (exclude host)
+    const notHost = ['!=', ['get','medal'], 'host'];
 
-  // Click point
-  map.on('click', 'point-core', (e) => {
-    const f = e.features[0];
-    if (f.properties.medal === 'host') {
+    map.addLayer({ id: 'point-ring', type: 'circle', source: 'points', filter: notHost, paint: {
+      'circle-radius': ['case',
+        ['>=',['get','medalCount'], 4], 14,
+        ['>=',['get','medalCount'], 2], 12,
+        9],
+      'circle-color': ['get','color'], 'circle-opacity': 0, 'circle-blur': 1,
+    }});
+    map.addLayer({ id: 'point-core', type: 'circle', source: 'points', filter: notHost, paint: {
+      'circle-radius': ['case',
+        ['>=',['get','medalCount'], 4], 10,
+        ['>=',['get','medalCount'], 2], 8,
+        5],
+      'circle-color': ['get','color'],
+      'circle-opacity': 0, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff',
+    }});
+
+    // Medal count labels (only shown for 2+ medals, exclude host)
+    map.addLayer({ id: 'point-label', type: 'symbol', source: 'points',
+      filter: ['all', notHost, ['>=', ['get','medalCount'], 2]],
+      layout: {
+        'text-field': ['to-string', ['get','medalCount']],
+        'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+        'text-size': ['case', ['>=',['get','medalCount'], 4], 12, 11],
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-opacity': 0,
+      },
+    });
+
+    // Host city star layer
+    map.addLayer({ id: 'host-star', type: 'symbol', source: 'points',
+      filter: ['==', ['get','medal'], 'host'],
+      layout: {
+        'icon-image': 'host-star',
+        'icon-size': 0.45,
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-opacity': 0,
+      },
+    });
+
+    // Cursor for all interactive layers
+    ['point-core', 'host-star'].forEach(layer => {
+      map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = ''; });
+    });
+
+    // Click medal points
+    map.on('click', 'point-core', (e) => {
+      showAthleteCard(e.features[0].properties);
+    });
+
+    // Click host star
+    map.on('click', 'host-star', () => {
       map.flyTo({ center: [CORTINA.lng, CORTINA.lat], zoom: 10, pitch: 50, duration: 2000 });
-      return;
-    }
-    showAthleteCard(f.properties);
-    map.flyTo({ center: e.lngLat, zoom: 7, pitch: 40, duration: 2000, essential: true });
-  });
+    });
+  }
 
   buildMedalStrip();
 });
@@ -1256,7 +1361,7 @@ document.getElementById('hero').addEventListener('click', () => {
   document.getElementById('hero').classList.add('hidden');
   rotating = false;
 
-  map.flyTo({ center: [10, 48], zoom: 3.8, pitch: 35, bearing: -8, duration: 3500, essential: true });
+  map.flyTo({ center: [10.5, 46.2], zoom: 5.2, pitch: 40, bearing: -8, duration: 3500, essential: true });
 
   setTimeout(() => {
     document.getElementById('stats').style.opacity = '1';
@@ -1269,6 +1374,8 @@ document.getElementById('hero').addEventListener('click', () => {
     map.setPaintProperty('arc-glow', 'line-opacity', 0.1);
     map.setPaintProperty('point-ring', 'circle-opacity', 0.25);
     map.setPaintProperty('point-core', 'circle-opacity', 1);
+    map.setPaintProperty('point-label', 'text-opacity', 1);
+    if (map.getLayer('host-star')) map.setPaintProperty('host-star', 'icon-opacity', 1);
   }, 2000);
 
   setTimeout(() => { document.getElementById('stories').classList.add('visible'); }, 3500);
@@ -1330,36 +1437,79 @@ function showAthleteCard(props) {
     }];
   }
 
+  // Group athletes by name so multi-medalists get one merged card
+  const grouped = new Map();
   athletes.forEach(a => {
+    if (!grouped.has(a.name)) {
+      grouped.set(a.name, { ...a, medals: [] });
+    }
     const emoji = a.medal === 'gold' ? '🥇' : a.medal === 'silver' ? '🥈' : '🥉';
     const medalLabel = a.medal.charAt(0).toUpperCase() + a.medal.slice(1);
+    grouped.get(a.name).medals.push({ emoji, medalLabel, event: a.event, slug: a.slug });
+  });
+
+  grouped.forEach(a => {
     const hometownCountry = a.hometownCountry || a.country;
-    const profileUrl = a.slug ? `https://www.olympics.com/en/athletes/${a.slug}` : '';
+    // Use the first available slug for the profile link
+    const slug = a.medals.find(m => m.slug)?.slug || '';
+    const profileUrl = slug ? `https://www.olympics.com/en/athletes/${slug}` : '';
     const linkHtml = profileUrl
       ? `<a class="athlete-link" href="${profileUrl}" target="_blank" rel="noopener">Olympic Profile <span class="arrow">↗</span></a>`
       : '';
 
     const entry = document.createElement('div');
     entry.className = 'athlete-entry';
-    entry.innerHTML = `
-      <div class="athlete-top">
-        <span class="medal-icon">${emoji}</span>
-        <div>
-          <div class="athlete-name">${a.name}</div>
-          <div class="athlete-event">${medalLabel} · ${a.event}</div>
+
+    if (a.medals.length === 1) {
+      // Single medal — keep original compact layout
+      const m = a.medals[0];
+      entry.innerHTML = `
+        <div class="athlete-top">
+          <span class="medal-icon" style="font-size:3rem">${m.emoji}</span>
+          <div>
+            <div class="athlete-name">${a.name}</div>
+            <div class="athlete-event">${m.medalLabel} · ${m.event}</div>
+          </div>
         </div>
-      </div>
-      <div class="athlete-meta">
-        <div class="meta-block">
-          <div class="meta-label">Hometown</div>
-          <div class="meta-value">${a.hometown}, ${hometownCountry}</div>
+        <div class="athlete-meta">
+          <div class="meta-block">
+            <div class="meta-label">Hometown</div>
+            <div class="meta-value">${a.hometown}, ${hometownCountry}</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Representing</div>
+            <div class="meta-value"><span class="meta-flag">${a.flag}</span> ${a.country}</div>
+          </div>
         </div>
-        <div class="meta-block">
-          <div class="meta-label">Representing</div>
-          <div class="meta-value"><span class="meta-flag">${a.flag}</span> ${a.country}</div>
+        ${linkHtml}`;
+    } else {
+      // Multiple medals — merged layout with medal list
+      const medalIcons = a.medals.map(m => `<span class="medal-icon">${m.emoji}</span>`).join('');
+      const medalItems = a.medals.map(m =>
+        `<li><span class="medal-dot">${m.emoji}</span> ${m.medalLabel} · ${m.event}</li>`
+      ).join('');
+
+      entry.innerHTML = `
+        <div class="athlete-header">
+          <div class="athlete-medals-col">${medalIcons}</div>
+          <div>
+            <div class="athlete-name">${a.name}</div>
+            <ul class="medal-list">${medalItems}</ul>
+          </div>
         </div>
-      </div>
-      ${linkHtml}`;
+        <div class="athlete-meta">
+          <div class="meta-block">
+            <div class="meta-label">Hometown</div>
+            <div class="meta-value">${a.hometown}, ${hometownCountry}</div>
+          </div>
+          <div class="meta-block">
+            <div class="meta-label">Representing</div>
+            <div class="meta-value"><span class="meta-flag">${a.flag}</span> ${a.country}</div>
+          </div>
+        </div>
+        ${linkHtml}`;
+    }
+
     body.appendChild(entry);
   });
 
@@ -1372,7 +1522,9 @@ function closeCard() {
 
 /* ── Map click to close card ── */
 map.on('click', (e) => {
-  const f = map.queryRenderedFeatures(e.point, { layers: ['point-core'] });
+  const clickLayers = ['point-core'];
+  if (map.getLayer('host-star')) clickLayers.push('host-star');
+  const f = map.queryRenderedFeatures(e.point, { layers: clickLayers });
   if (f.length === 0) closeCard();
 });
 
