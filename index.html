@@ -1450,12 +1450,13 @@ function showAthleteCard(props) {
 
   grouped.forEach(a => {
     const hometownCountry = a.hometownCountry || a.country;
-    // Use the first available slug for the profile link
-    const slug = a.medals.find(m => m.slug)?.slug || '';
-    const profileUrl = slug ? `https://www.olympics.com/en/athletes/${slug}` : '';
-    const linkHtml = profileUrl
-      ? `<a class="athlete-link" href="${profileUrl}" target="_blank" rel="noopener">Olympic Profile <span class="arrow">↗</span></a>`
-      : '';
+    // HIDDEN: Olympic profile links (not all slugs resolve correctly)
+    // const slug = a.medals.find(m => m.slug)?.slug || '';
+    // const profileUrl = slug ? `https://www.olympics.com/en/athletes/${slug}` : '';
+    // const linkHtml = profileUrl
+    //   ? `<a class="athlete-link" href="${profileUrl}" target="_blank" rel="noopener">Olympic Profile <span class="arrow">↗</span></a>`
+    //   : '';
+    const linkHtml = '';
 
     const entry = document.createElement('div');
     entry.className = 'athlete-entry';
