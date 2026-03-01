@@ -2,7 +2,7 @@
 
 An interactive 3D globe visualization mapping every Winter Olympic medalist to their hometown.
 
-**[Live Demo →](#)** *(replace with your deployed URL)*
+**[Live Demo →](https://judy-huynh.github.io/olympics-2026/)**
 
 ![Preview](https://img.shields.io/badge/status-live-brightgreen) ![Mapbox GL](https://img.shields.io/badge/Mapbox_GL-v3.3.0-blue) ![License](https://img.shields.io/badge/license-All_Rights_Reserved-red)
 
@@ -55,7 +55,7 @@ Medal data was scraped from the official [Olympics.com Milano-Cortina 2026 medal
 
 ## Credits
 
-**Design & Development:** Judy Huynh
+**Design & Development:** [Judy Huynh](https://judyhuynh.ca)
 **Data Source:** [Olympics.com](https://www.olympics.com/en/milano-cortina-2026/medals)
 ---
 
