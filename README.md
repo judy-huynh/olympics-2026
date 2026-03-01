@@ -55,8 +55,7 @@ Medal data was scraped from the official [Olympics.com Milano-Cortina 2026 medal
 
 ## Credits
 
-**Design & Development:** [Judy Huynh](https://judyhuynh.ca)
-**Data Source:** [Olympics.com](https://www.olympics.com/en/milano-cortina-2026/medals)
----
+- **Design & Development:** [Judy Huynh](https://judyhuynh.ca)
+- **Data Source:** [Olympics.com](https://www.olympics.com/en/milano-cortina-2026/medals)
 
 © 2026 Judy Huynh. All rights reserved.
